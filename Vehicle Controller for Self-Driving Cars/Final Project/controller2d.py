@@ -6,6 +6,7 @@
 
 import cutils
 import numpy as np
+import control
 
 class Controller2D(object):
     def __init__(self, waypoints):
@@ -76,7 +77,71 @@ class Controller2D(object):
         # Clamp the steering command to valid bounds
         brake           = np.fmax(np.fmin(input_brake, 1.0), 0.0)
         self._set_brake = brake
+        
+    def calculate_steer(self, t, x, y, yaw, v_f):
+        self.vars.create_var('c', 0.0)
+        self.vars.create_var('k', 0.0)
+        self.vars.create_var('h_previous', 0.0)
+        self.vars.create_var('yaw_prev', 0.0)
+        self.vars.create_var('e_prev', 0.0)
+        self.vars.create_var('psi_previous', 0.0)
+        t_diff = t - self.vars.t_previous
+        closest_index = self.closest_cal(x,y)
+        e = self.distance(x,y,closest_index)
+        heading = self.head_calculator(closest_index)
+        print(heading," ", yaw, " ", self._current_speed, " ", self._desired_speed, " ", e)
+        if self.vars.h_previous>1 and heading<=-1:
+            self.vars.c += 1.0
+        elif self.vars.h_previous<-1 and heading>=1:
+            self.vars.c -= 1.0
 
+        yaw = self._pi * yaw / abs(yaw) - yaw
+        
+        if self.vars.yaw_prev<=-2.5 and yaw>2.5:
+            self.vars.k -= 1.0
+        elif self.vars.yaw_prev>=2.5 and yaw<-2.5:
+            self.vars.k += 1.0
+        
+        psi = (heading + self.vars.c*self._pi + yaw + self.vars.k*self._2pi)
+        cons = -1 if self.check_left(x, y, closest_index) else 1
+        e = e*cons
+        #delta = psi + cons * np.arctan(self._kStan * e / v_f)
+        X = [[e], [(e - self.vars.e_prev)/t_diff], [psi], [(psi - self.vars.psi_previous)/t_diff]]
+        K = self.LQR(v_f)
+        delta = K @ X
+        self.vars.e_prev = e
+        self.vars.h_previous = heading
+        self.vars.yaw_prev = yaw
+        self.vars.psi_previous = psi
+        print (X)
+        print (delta, " ", self.vars.c)
+        return (delta)
+    
+    def LQR(self, Vx):
+        m = 1140
+        Iz = 1436.24
+        Lf = 1.165
+        Lr = 1.165
+        Cf = 155494.663
+        Cr = 155494.663
+        if Vx<=1.5:
+            Vx = 1.5
+        A = [[0,                     1,                0,                            0],
+             [0,       -(Cf+Cr)/(m*Vx),        (Cf+Cr)/m,         (Lr*Cr-Lf*Cf)/(m*Vx)],
+             [0,                     0,                0,                            1],
+             [0, (Lr*Cr-Lf*Cf)/(Iz*Vx), (Lf*Cf-Lr*Cr)/Iz, -(Lf*Lf*Cf+Lr*Lr*Cr)/(Iz*Vx)]]
+        B = [[0],
+             [Cf/m],
+             [0],
+             [Lf*Cf/Iz]]
+        Q = [[50, 0, 0, 0],
+             [0, 5, 0, 0],
+             [0, 0, 10, 0],
+             [0, 0, 0, 0]]
+        R = [[50]]
+        K, S, E = control.lqr(A, B, Q, R)
+        return K
+    
     def update_controls(self):
         ######################################################
         # RETRIEVE SIMULATOR FEEDBACK
@@ -321,7 +386,11 @@ class Controller2D(object):
             steer_expect = np.max([-1.22, steer_expect])
 
             steer_output=steer_expect
-
+            
+            #LQR implementation
+            '''
+            steer_output    = self.calculate_steer(t,x,y,yaw,v)
+            '''
             ######################################################
             # SET CONTROLS OUTPUT
             ######################################################
