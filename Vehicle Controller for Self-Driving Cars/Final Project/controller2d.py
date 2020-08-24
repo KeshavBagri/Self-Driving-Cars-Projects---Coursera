@@ -77,7 +77,41 @@ class Controller2D(object):
         # Clamp the steering command to valid bounds
         brake           = np.fmax(np.fmin(input_brake, 1.0), 0.0)
         self._set_brake = brake
-        
+    
+    def distance(self, x, y, idx):
+        d = np.sqrt((x-self._waypoints[idx][0])**2 + (y-self._waypoints[idx][1])**2)
+        return d 
+    
+    def closest_cal(self, x, y):
+        min_idx       = 0
+        min_dist      = float("inf")
+        for i in range(len(self._waypoints)):
+            dist = self.distance(x, y, i)
+            if dist < min_dist:
+                min_dist = dist
+                min_idx = i
+        min_idx = len(self._waypoints)-1 if (min_idx >= len(self._waypoints)-1) else min_idx
+        return min_idx
+    
+    def closest_cal(self, x, y):
+        min_idx       = 0
+        min_dist      = float("inf")
+        for i in range(len(self._waypoints)):
+            dist = self.distance(x, y, i)
+            if dist < min_dist:
+                min_dist = dist
+                min_idx = i
+        min_idx = len(self._waypoints)-1 if (min_idx >= len(self._waypoints)-1) else min_idx
+        return min_idx
+    
+    def check_left(self, x, y, ind):
+        x1 = self._waypoints[ind][0]
+        y1 = self._waypoints[ind][1]
+        x2 = self._waypoints[ind-1][0]
+        y2 = self._waypoints[ind-1][1]
+        k = (x-x1)*(y2-y1)-(y-y1)*(x2-x1)
+        return True if k>0 else False
+    
     def calculate_steer(self, t, x, y, yaw, v_f):
         self.vars.create_var('c', 0.0)
         self.vars.create_var('k', 0.0)
